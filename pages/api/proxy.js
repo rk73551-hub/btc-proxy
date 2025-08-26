@@ -1,29 +1,52 @@
+// api/proxy.js
+// Minimal passthrough proxy that ALWAYS appends your secret token server-side.
+// Uses single quotes as requested.
+
 export default async function handler(req, res) {
-  const base  = process.env.GAS_URL;
-  const token = process.env.API_TOKEN;
-
-  if (!base || !token) {
-    return res.status(500).json({ error: 'Missing GAS_URL or API_TOKEN' });
-  }
-
-  const inUrl = new URL(req.url, `http://${req.headers.host}`);
-  const out   = new URL(base);
-
-  const allow = ['limit','since','until','ytd','mode'];
-  for (const k of allow) {
-    if (inUrl.searchParams.has(k)) {
-      out.searchParams.set(k, inUrl.searchParams.get(k));
-    }
-  }
-  out.searchParams.set('token', token);
-
   try {
-    const r = await fetch(out.toString(), { headers: { 'User-Agent': 'vercel-proxy/1.0' }});
-    const body = await r.text();
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.status(r.status).send(body);
+    const base = process.env.UPSTREAM_BASE;      // Apps Script exec URL (no query)
+    const token = process.env.UPSTREAM_TOKEN;    // your secret
+
+    if (!base || !token) {
+      return res.status(500).json({
+        ok: false,
+        error: 'Missing UPSTREAM_BASE or UPSTREAM_TOKEN env var',
+      });
+    }
+
+    // Only allow these query params from the client
+    const allow = ['limit', 'since', 'until', 'ytd', 'mode'];
+
+    // Build upstream URL
+    const url = new URL(base);
+    // Forward only allowed params
+    for (const [k, v] of Object.entries(req.query || {})) {
+      if (allow.includes(k)) url.searchParams.set(k, String(v));
+    }
+    // Always append token
+    url.searchParams.set('token', token);
+
+    // If no mode provided, ask for a small health to avoid placeholders downstream
+    if (!url.searchParams.has('mode')) {
+      url.searchParams.set('mode', 'health');
+    }
+
+    const upstream = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    const text = await upstream.text();
+
+    // Try to return JSON if possible, otherwise passthrough text
+    try {
+      const json = JSON.parse(text);
+      return res.status(upstream.status).json(json);
+    } catch {
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'text/plain');
+      return res.status(upstream.status).send(text);
+    }
   } catch (err) {
-    return res.status(500).json({ error: String(err) });
+    return res.status(500).json({ ok: false, error: String(err) });
   }
 }

@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     }
 
     // Only allow these query params from the client
-    const allow = ['limit', 'since', 'until', 'ytd', 'mode'];
+    const allow = ['limit', 'since', 'until', 'ytd', 'mode', 'token'];
 
     // Build upstream URL
     const url = new URL(base);

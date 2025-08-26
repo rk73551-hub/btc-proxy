@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   const inUrl = new URL(req.url, `http://${req.headers.host}`);
   const out   = new URL(base);
 
-  const allow = ['limit','since','until','ytd'];
+  const allow = ['limit','since','until','ytd',',mode'];
   for (const k of allow) {
     if (inUrl.searchParams.has(k)) {
       out.searchParams.set(k, inUrl.searchParams.get(k));
